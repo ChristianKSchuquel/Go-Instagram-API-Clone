@@ -2,12 +2,16 @@ package utils
 
 import (
 	"api2/database"
+	"api2/models"
 	"errors"
 	"log"
+	"math/rand"
+	"strconv"
 	"time"
 	"unicode"
 
 	"github.com/golang-jwt/jwt"
+	"gorm.io/gorm"
 )
 
 // validates a password, used in signup to verify the user provided password
@@ -36,6 +40,16 @@ func ValidatePwd(s string) bool {
 		}
 	}
 	return hasMinLen && hasUpper && hasLower && hasNumber && hasSpecial
+}
+
+func GenID(db *gorm.DB) (id uint, err error) {
+	var user models.User
+	randomId := rand.Uint32()
+	if err := db.First(&user, randomId).Error; err != gorm.ErrRecordNotFound {
+		return GenID(db)
+	}
+
+	return uint(randomId), nil
 }
 
 type JWTClaim struct {
@@ -104,4 +118,30 @@ func GetTokenContent(signedToken string) (id uint, err error) {
 
 	claims := token.Claims.(*JWTClaim)
 	return claims.Id, nil
+}
+
+// gets the id from the jwt token and checks if it is valid
+
+func CheckJWTToken(token string, db *gorm.DB) (user models.User, err error) {
+
+	id, err := GetTokenContent(token)
+	if err != nil {
+		return models.User{}, err
+	}
+
+	//for some reason, in order for the code above to work, the "PREFIX" field in the bearer auth tab NEEDS to have spaces, this may be some insomnia bug but i have no ideia
+
+	idStr := strconv.FormatUint(uint64(id), 10)
+
+	user, exists, err := database.GetUser(idStr, db)
+	if err != nil {
+		log.Println(err)
+		return user, err
+	}
+
+	if !exists {
+		return user, errors.New("User not found")
+	}
+
+	return user, nil
 }

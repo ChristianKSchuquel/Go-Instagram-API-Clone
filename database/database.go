@@ -29,9 +29,12 @@ func Setup() {
 		return
 	}
 
-	// db.AutoMigrate(&models.Comment{})
-	// db.AutoMigrate(&models.Post{})
-	// db.AutoMigrate(&models.User{})
+	db.AutoMigrate(&models.Comment{})
+	db.AutoMigrate(&models.Post{})
+	db.AutoMigrate(&models.User{})
+	db.AutoMigrate(&models.Comment{})
+	db.AutoMigrate(&models.Like{})
+	db.AutoMigrate(&models.Follow{})
 
 	DB = db
 	return
@@ -40,8 +43,6 @@ func Setup() {
 func GetDB() *gorm.DB {
 	return DB
 }
-
-// crud functions
 
 var User models.User
 

@@ -77,6 +77,15 @@ func (a *APIEnv) CreateUser(c *gin.Context) {
 		return
 	}
 
+	newUser.Gender = strings.ToLower(newUser.Gender)
+
+	newUser.ID, err = utils.GenID(a.DB)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while creating the user id"})
+		c.Abort()
+		return
+	}
+
 	a.DB.Create(&newUser)
 	c.JSON(http.StatusCreated, "Created User Successfully")
 }
@@ -177,7 +186,7 @@ func (a *APIEnv) GetUsers(c *gin.Context) {
 }
 
 // ==================================================================
-// DELETE: /user
+// DELETE: /account
 // ==================================================================
 
 func (a *APIEnv) DeleteUser(c *gin.Context) {
@@ -203,7 +212,7 @@ func (a *APIEnv) DeleteUser(c *gin.Context) {
 	}
 
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Users not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		c.Abort()
 		return
 	}
@@ -211,4 +220,82 @@ func (a *APIEnv) DeleteUser(c *gin.Context) {
 	a.DB.Delete(&user)
 
 	c.JSON(http.StatusOK, gin.H{"Success": "User deleted successfully"})
+}
+
+// ==================================================================
+// PATCH: /account
+// ==================================================================
+
+func (a *APIEnv) UpdateUser(c *gin.Context) {
+	token := c.GetHeader("Authorization")
+
+	user, err := utils.CheckJWTToken(token, a.DB)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		c.Abort()
+		return
+	}
+
+	var loginDto models.LoginDTO
+	var newUser models.User
+
+	errBind := c.BindJSON(&loginDto)
+	if errBind != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errBind})
+		c.Abort()
+		return
+	}
+
+	if err := a.DB.Where("email = ?", loginDto.Email).First(&newUser).Error; err != gorm.ErrRecordNotFound {
+		log.Println(err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
+		c.Abort()
+		return
+	}
+
+	re := regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
+
+	if re.MatchString(loginDto.Email) != true {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
+		c.Abort()
+		return
+	}
+
+	if isPwdValid := utils.ValidatePwd(loginDto.Password); isPwdValid != true {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
+		c.Abort()
+		return
+	}
+
+	newPwd, err := bcrypt.GenerateFromPassword([]byte(loginDto.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, "An error occurred while hashing the password")
+		c.Abort()
+		return
+	}
+
+	if len(loginDto.Name) < 2 || len(loginDto.Name) > 35 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials name"})
+		c.Abort()
+		return
+	}
+
+	loginDto.Password = string(newPwd[:])
+
+	user.Name = loginDto.Name
+	user.Email = loginDto.Email
+	user.Password = loginDto.Password
+	user.Gender = loginDto.Gender
+	user.Gender = strings.ToLower(loginDto.Gender)
+
+	a.DB.Save(&user)
+
+	c.JSON(http.StatusOK, user)
+}
+
+// ==================================================================
+// POST: /post
+// ==================================================================
+
+func (a *APIEnv) CreatePost(c *gin.Context) {
 }
