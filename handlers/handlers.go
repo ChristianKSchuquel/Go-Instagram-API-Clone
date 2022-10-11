@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -79,7 +78,7 @@ func (a *APIEnv) CreateUser(c *gin.Context) {
 
 	newUser.Gender = strings.ToLower(newUser.Gender)
 
-	newUser.ID, err = utils.GenID(a.DB)
+	newUser.ID, err = utils.GenUserID(a.DB)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while creating the user id"})
 		c.Abort()
@@ -192,27 +191,9 @@ func (a *APIEnv) GetUsers(c *gin.Context) {
 func (a *APIEnv) DeleteUser(c *gin.Context) {
 	token := c.GetHeader("Authorization")
 
-	id, err := utils.GetTokenContent(token)
+	user, err := utils.CheckJWTToken(token, a.DB)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-		c.Abort()
-		return
-	}
-
-	//for some reason, in order for the code above to work, the "PREFIX" field in the bearer auth tab NEEDS to have spaces, this may be some insomnia bug but i have no ideia
-
-	idStr := strconv.FormatUint(uint64(id), 10)
-
-	user, exists, err := database.GetUser(idStr, a.DB)
-	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		c.Abort()
-		return
-	}
-
-	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 		c.Abort()
 		return
 	}
@@ -298,4 +279,45 @@ func (a *APIEnv) UpdateUser(c *gin.Context) {
 // ==================================================================
 
 func (a *APIEnv) CreatePost(c *gin.Context) {
+	token := c.GetHeader("Authorization")
+
+	user, err := utils.CheckJWTToken(token, a.DB)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		c.Abort()
+		return
+	}
+
+	var newPost models.Post
+
+	errBind := c.BindJSON(&newPost)
+	if errBind != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errBind})
+		c.Abort()
+		return
+	}
+
+	newPost.ID, err = utils.GenPostID(a.DB)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while creating the user id"})
+		c.Abort()
+		return
+	}
+	post := []models.Post{newPost}
+	user.Posts = append(post)
+
+	if len(newPost.Title) < 2 || len(newPost.Title) > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid title length: title should be at least 2 characters and at max 100"})
+		c.Abort()
+		return
+	}
+
+	if len(newPost.Content) < 10 || len(newPost.Content) > 300 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid content length: content should be at least 10 characters and at max 300"})
+		c.Abort()
+		return
+	}
+
+	a.DB.Save(&user)
+	c.JSON(http.StatusOK, gin.H{"Success": user})
 }

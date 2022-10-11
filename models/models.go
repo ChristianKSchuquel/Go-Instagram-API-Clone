@@ -21,17 +21,16 @@ type User struct {
 type Follow struct {
 	gorm.Model
 	UserID     uint
-	FollowerId uint
+	FollowerID uint
 }
 
 type Post struct {
 	gorm.Model
-	UserID      uint
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Image       string `json:"image"`
-	Comments    []Comment
-	Likes       []Like
+	UserID   uint
+	Title    string `json:"title"`
+	Content  string `json:"description"`
+	Comments []Comment
+	Likes    []Like
 }
 
 type Comment struct {

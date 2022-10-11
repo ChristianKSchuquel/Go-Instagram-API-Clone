@@ -29,12 +29,12 @@ func Setup() {
 		return
 	}
 
-	db.AutoMigrate(&models.Comment{})
-	db.AutoMigrate(&models.Post{})
-	db.AutoMigrate(&models.User{})
-	db.AutoMigrate(&models.Comment{})
-	db.AutoMigrate(&models.Like{})
-	db.AutoMigrate(&models.Follow{})
+	// db.AutoMigrate(&models.Comment{})
+	// db.AutoMigrate(&models.Post{})
+	// db.AutoMigrate(&models.User{})
+	// db.AutoMigrate(&models.Comment{})
+	// db.AutoMigrate(&models.Like{})
+	// db.AutoMigrate(&models.Follow{})
 
 	DB = db
 	return
@@ -49,7 +49,7 @@ var User models.User
 func GetUser(id string, db *gorm.DB) (models.User, bool, error) {
 	u := models.User{}
 
-	err := db.First(&u, id).Error
+	err := db.Preload("Posts").First(&u, id).Error
 
 	if err != nil && err != gorm.ErrRecordNotFound {
 		return u, false, err
@@ -65,7 +65,7 @@ func GetUser(id string, db *gorm.DB) (models.User, bool, error) {
 func GetAllUsers(db *gorm.DB) ([]models.User, bool, error) {
 	users := []models.User{}
 
-	result := db.Find(&users)
+	result := db.Preload("Posts").Find(&users)
 	if result.Error != nil && result.Error != gorm.ErrRecordNotFound {
 		return users, false, result.Error
 	}
