@@ -86,7 +86,7 @@ func (a *APIEnv) CreateUser(c *gin.Context) {
 	}
 
 	a.DB.Create(&newUser)
-	c.JSON(http.StatusCreated, "Created User Successfully")
+	c.JSON(http.StatusCreated, gin.H{"Created User Successfully": newUser})
 }
 
 // ==================================================================
@@ -157,7 +157,7 @@ func (a *APIEnv) GetUserByID(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, user)
+	c.JSON(http.StatusOK, gin.H{"User": user})
 }
 
 // ==================================================================
@@ -181,7 +181,7 @@ func (a *APIEnv) GetUsers(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, users)
+	c.JSON(http.StatusOK, gin.H{"Users": users})
 }
 
 // ==================================================================
@@ -200,7 +200,7 @@ func (a *APIEnv) DeleteUser(c *gin.Context) {
 
 	a.DB.Delete(&user)
 
-	c.JSON(http.StatusOK, gin.H{"Success": "User deleted successfully"})
+	c.JSON(http.StatusOK, gin.H{"User deleted successfully": user})
 }
 
 // ==================================================================
@@ -271,7 +271,7 @@ func (a *APIEnv) UpdateUser(c *gin.Context) {
 
 	a.DB.Save(&user)
 
-	c.JSON(http.StatusOK, user)
+	c.JSON(http.StatusOK, gin.H{"User updated successfully": user})
 }
 
 // ==================================================================
@@ -319,5 +319,22 @@ func (a *APIEnv) CreatePost(c *gin.Context) {
 	}
 
 	a.DB.Save(&user)
-	c.JSON(http.StatusOK, gin.H{"Success": user})
+	c.JSON(http.StatusOK, gin.H{"Post created successfully": newPost})
+}
+
+// ==================================================================
+// GET: /post
+// ==================================================================
+
+func (a *APIEnv) GetUserPosts(c *gin.Context) {
+	token := c.GetHeader("Authorization")
+
+	user, err := utils.CheckJWTToken(token, a.DB)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		c.Abort()
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"Posts": user.Posts})
 }

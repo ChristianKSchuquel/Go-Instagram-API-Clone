@@ -27,6 +27,7 @@ func Setup() *gin.Engine {
 			authorized.DELETE("/account", api.DeleteUser)
 			authorized.PATCH("/account", api.UpdateUser)
 			authorized.POST("/post", api.CreatePost)
+			authorized.GET("/post", api.GetUserPosts)
 		}
 	}
 
