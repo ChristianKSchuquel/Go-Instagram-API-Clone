@@ -191,7 +191,7 @@ func (a *APIEnv) GetUsers(c *gin.Context) {
 func (a *APIEnv) DeleteUser(c *gin.Context) {
 	token := c.GetHeader("Authorization")
 
-	user, err := utils.CheckJWTToken(token, a.DB)
+	user, err := utils.CheckJWTUserID(token, a.DB)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		c.Abort()
@@ -210,7 +210,7 @@ func (a *APIEnv) DeleteUser(c *gin.Context) {
 func (a *APIEnv) UpdateUser(c *gin.Context) {
 	token := c.GetHeader("Authorization")
 
-	user, err := utils.CheckJWTToken(token, a.DB)
+	user, err := utils.CheckJWTUserID(token, a.DB)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		c.Abort()
@@ -275,13 +275,30 @@ func (a *APIEnv) UpdateUser(c *gin.Context) {
 }
 
 // ==================================================================
+// GET: /account
+// ==================================================================
+
+func (a *APIEnv) GetCurrentUser(c *gin.Context) {
+	token := c.GetHeader("Authorization")
+
+	user, err := utils.CheckJWTUserID(token, a.DB)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		c.Abort()
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"User": user})
+}
+
+// ==================================================================
 // POST: /post
 // ==================================================================
 
 func (a *APIEnv) CreatePost(c *gin.Context) {
 	token := c.GetHeader("Authorization")
 
-	user, err := utils.CheckJWTToken(token, a.DB)
+	user, err := utils.CheckJWTUserID(token, a.DB)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		c.Abort()
@@ -323,18 +340,20 @@ func (a *APIEnv) CreatePost(c *gin.Context) {
 }
 
 // ==================================================================
-// GET: /post
+// GET: /post/:postid
 // ==================================================================
 
-func (a *APIEnv) GetUserPosts(c *gin.Context) {
-	token := c.GetHeader("Authorization")
+func (a *APIEnv) GetPostFromUser(c *gin.Context) {
+	postId := c.Params.ByName("postid")
+	post := models.Post{}
 
-	user, err := utils.CheckJWTToken(token, a.DB)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-		c.Abort()
-		return
+	err := a.DB.First(&post, postId).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
+	}
+	if err == gorm.ErrRecordNotFound {
+		c.JSON(http.StatusBadRequest, gin.H{"Error": err})
 	}
 
-	c.JSON(http.StatusOK, gin.H{"Posts": user.Posts})
+	c.JSON(http.StatusOK, gin.H{"Post": post})
 }

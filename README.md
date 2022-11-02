@@ -3,7 +3,7 @@
  
  My first actual project using Go, Gin and Gorm.
  
- Hopefully i`ll finish it...
+ Hopefully i'll finish it...
  
  ### Run using
  

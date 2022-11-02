@@ -114,6 +114,8 @@ func ValidateToken(signedToken string) (err error) {
 	return
 }
 
+//for some reason, in order for the code below to work, the "PREFIX" field in the bearer auth tab NEEDS to have spaces, this may be some insomnia bug but i have no ideia
+
 func GetTokenContent(signedToken string) (id uint, err error) {
 	token, err := jwt.ParseWithClaims(
 		signedToken,
@@ -132,14 +134,12 @@ func GetTokenContent(signedToken string) (id uint, err error) {
 
 // gets the id from the jwt token and checks if it is valid
 
-func CheckJWTToken(token string, db *gorm.DB) (user models.User, err error) {
+func CheckJWTUserID(token string, db *gorm.DB) (user models.User, err error) {
 
 	id, err := GetTokenContent(token)
 	if err != nil {
 		return models.User{}, err
 	}
-
-	//for some reason, in order for the code above to work, the "PREFIX" field in the bearer auth tab NEEDS to have spaces, this may be some insomnia bug but i have no ideia
 
 	idStr := strconv.FormatUint(uint64(id), 10)
 
