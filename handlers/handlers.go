@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -130,9 +131,7 @@ func (a *APIEnv) Login(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, map[string]string{
-		"token": token,
-	})
+	c.JSON(http.StatusOK, gin.H{"token": token})
 }
 
 // ==================================================================
@@ -218,18 +217,10 @@ func (a *APIEnv) UpdateUser(c *gin.Context) {
 	}
 
 	var loginDto models.LoginDTO
-	var newUser models.User
 
 	errBind := c.BindJSON(&loginDto)
 	if errBind != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errBind})
-		c.Abort()
-		return
-	}
-
-	if err := a.DB.Where("email = ?", loginDto.Email).First(&newUser).Error; err != gorm.ErrRecordNotFound {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
 		c.Abort()
 		return
 	}
@@ -350,10 +341,79 @@ func (a *APIEnv) GetPostFromUser(c *gin.Context) {
 	err := a.DB.First(&post, postId).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
+		c.Abort()
+		return
 	}
+
 	if err == gorm.ErrRecordNotFound {
 		c.JSON(http.StatusBadRequest, gin.H{"Error": err})
+		c.Abort()
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"Post": post})
+}
+
+// ==================================================================
+// PATCH: /post/:postid
+// ==================================================================
+
+func (a *APIEnv) UpdatePost(c *gin.Context) {
+	postId := c.Params.ByName("postid")
+	post := models.Post{}
+
+	err := a.DB.First(&post, postId).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
+		c.Abort()
+		return
+	}
+	if err == gorm.ErrRecordNotFound {
+		c.JSON(http.StatusBadRequest, gin.H{"Error": "Post not found"})
+		c.Abort()
+		return
+	}
+
+	token := c.GetHeader("Authorization")
+
+	user, err := utils.CheckJWTUserID(token, a.DB)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		c.Abort()
+		return
+	}
+
+	if user.ID != post.UserID {
+		c.JSON(http.StatusUnauthorized, gin.H{"Unauthorized": "You're not the owner of this post"})
+		c.Abort()
+		return
+	}
+
+	var newPost models.Post
+
+	errBind := c.BindJSON(&newPost)
+	if errBind != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errBind})
+		c.Abort()
+		return
+	}
+
+	if len(newPost.Title) < 2 || len(newPost.Title) > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid title length: title should be at least 2 characters and at max 100"})
+		c.Abort()
+		return
+	}
+
+	if len(newPost.Content) < 10 || len(newPost.Content) > 300 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid content length: content should be at least 10 characters and at max 300"})
+		c.Abort()
+		return
+	}
+
+	post.Title = newPost.Title
+	post.Content = newPost.Content
+	post.UpdatedAt = time.Now()
+
+	a.DB.Save(&post)
+	c.JSON(http.StatusOK, gin.H{"Post": "post updated successfully"})
 }

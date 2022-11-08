@@ -28,7 +28,7 @@ type Post struct {
 	gorm.Model
 	UserID   uint
 	Title    string `json:"title"`
-	Content  string `json:"description"`
+	Content  string `json:"content"`
 	Comments []Comment
 	Likes    []Like
 }
