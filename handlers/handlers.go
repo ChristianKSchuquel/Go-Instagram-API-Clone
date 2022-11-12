@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
@@ -38,7 +37,6 @@ func (a *APIEnv) CreateUser(c *gin.Context) {
 	// email validation
 
 	if err := a.DB.Where("email = ?", newUser.Email).First(&newUser).Error; err != gorm.ErrRecordNotFound {
-		log.Println(err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
 		c.Abort()
 		return
@@ -113,7 +111,7 @@ func (a *APIEnv) Login(c *gin.Context) {
 	}
 
 	if err == gorm.ErrRecordNotFound {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Invalid Credentials"})
 		c.Abort()
 		return
 	}
@@ -192,7 +190,7 @@ func (a *APIEnv) DeleteUser(c *gin.Context) {
 
 	user, err := utils.CheckJWTUserID(token, a.DB)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err})
 		c.Abort()
 		return
 	}
@@ -211,7 +209,7 @@ func (a *APIEnv) UpdateUser(c *gin.Context) {
 
 	user, err := utils.CheckJWTUserID(token, a.DB)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err})
 		c.Abort()
 		return
 	}
@@ -274,7 +272,7 @@ func (a *APIEnv) GetCurrentUser(c *gin.Context) {
 
 	user, err := utils.CheckJWTUserID(token, a.DB)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err})
 		c.Abort()
 		return
 	}
@@ -291,7 +289,7 @@ func (a *APIEnv) CreatePost(c *gin.Context) {
 
 	user, err := utils.CheckJWTUserID(token, a.DB)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err})
 		c.Abort()
 		return
 	}
@@ -334,7 +332,7 @@ func (a *APIEnv) CreatePost(c *gin.Context) {
 // GET: /post/:postid
 // ==================================================================
 
-func (a *APIEnv) GetPostFromUser(c *gin.Context) {
+func (a *APIEnv) GetPost(c *gin.Context) {
 	postId := c.Params.ByName("postid")
 	post := models.Post{}
 
@@ -346,7 +344,7 @@ func (a *APIEnv) GetPostFromUser(c *gin.Context) {
 	}
 
 	if err == gorm.ErrRecordNotFound {
-		c.JSON(http.StatusBadRequest, gin.H{"Error": err})
+		c.JSON(http.StatusNotFound, gin.H{"Error": err})
 		c.Abort()
 		return
 	}
@@ -369,7 +367,7 @@ func (a *APIEnv) UpdatePost(c *gin.Context) {
 		return
 	}
 	if err == gorm.ErrRecordNotFound {
-		c.JSON(http.StatusBadRequest, gin.H{"Error": "Post not found"})
+		c.JSON(http.StatusNotFound, gin.H{"Error": "Post not found"})
 		c.Abort()
 		return
 	}
@@ -378,7 +376,7 @@ func (a *APIEnv) UpdatePost(c *gin.Context) {
 
 	user, err := utils.CheckJWTUserID(token, a.DB)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err})
 		c.Abort()
 		return
 	}
@@ -412,8 +410,47 @@ func (a *APIEnv) UpdatePost(c *gin.Context) {
 
 	post.Title = newPost.Title
 	post.Content = newPost.Content
-	post.UpdatedAt = time.Now()
 
 	a.DB.Save(&post)
 	c.JSON(http.StatusOK, gin.H{"Post": "post updated successfully"})
+}
+
+// ==================================================================
+// DELETE: /post/:postid
+// ==================================================================
+
+func (a *APIEnv) DeletePost(c *gin.Context) {
+	token := c.GetHeader("Authorization")
+	postID := c.Params.ByName("postid")
+	post := models.Post{}
+
+	err := a.DB.First(&post, postID).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		c.Abort()
+		return
+	}
+
+	if err == gorm.ErrRecordNotFound {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
+		c.Abort()
+		return
+	}
+
+	user, err := utils.CheckJWTUserID(token, a.DB)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err})
+		c.Abort()
+		return
+	}
+
+	if post.UserID != user.ID {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "You're not the owner of this post"})
+		c.Abort()
+		return
+	}
+
+	a.DB.Delete(&post)
+
+	c.JSON(http.StatusOK, gin.H{"User deleted successfully": post})
 }
