@@ -455,6 +455,10 @@ func (a *APIEnv) DeletePost(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"User deleted successfully": post})
 }
 
+// ==================================================================
+// POST: /post/:postid
+// ==================================================================
+
 func (a *APIEnv) CreateComment(c *gin.Context) {
 	postId := c.Params.ByName("postid")
 	post := models.Post{}
