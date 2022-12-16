@@ -293,7 +293,6 @@ func (a *APIEnv) CreatePost(c *gin.Context) {
 		c.Abort()
 		return
 	}
-
 	var newPost models.Post
 
 	errBind := c.BindJSON(&newPost)
@@ -309,6 +308,7 @@ func (a *APIEnv) CreatePost(c *gin.Context) {
 		c.Abort()
 		return
 	}
+
 	post := []models.Post{newPost}
 	user.Posts = append(post)
 
@@ -336,7 +336,7 @@ func (a *APIEnv) GetPost(c *gin.Context) {
 	postId := c.Params.ByName("postid")
 	post := models.Post{}
 
-	err := a.DB.First(&post, postId).Error
+	err := a.DB.Preload("Comments").First(&post, postId).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
 		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
 		c.Abort()
@@ -453,4 +453,56 @@ func (a *APIEnv) DeletePost(c *gin.Context) {
 	a.DB.Delete(&post)
 
 	c.JSON(http.StatusOK, gin.H{"User deleted successfully": post})
+}
+
+func (a *APIEnv) CreateComment(c *gin.Context) {
+	postId := c.Params.ByName("postid")
+	post := models.Post{}
+
+	err := a.DB.First(&post, postId).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
+		c.Abort()
+		return
+	}
+	if err == gorm.ErrRecordNotFound {
+		c.JSON(http.StatusNotFound, gin.H{"Error": "Post not found"})
+		c.Abort()
+		return
+	}
+
+	token := c.GetHeader("Authorization")
+
+	user, err := utils.CheckJWTUserID(token, a.DB)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err})
+		c.Abort()
+		return
+	}
+
+	var newComment models.Comment
+
+	errBind := c.BindJSON(&newComment)
+	if errBind != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": errBind})
+		c.Abort()
+		return
+	}
+
+    newComment.UserID = user.ID
+
+	newComment.ID, err = utils.GenPostID(a.DB)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while creating the comment id"})
+		c.Abort()
+		return
+	}
+
+    newComment.PostID = post.ID
+
+	comment := []models.Comment{newComment}
+	user.Comments = append(comment)
+
+    a.DB.Save(&user)
+	c.JSON(http.StatusOK, gin.H{"Comment created successfully": newComment})
 }

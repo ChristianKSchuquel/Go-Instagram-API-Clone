@@ -49,7 +49,7 @@ var User models.User
 func GetUser(id string, db *gorm.DB) (models.User, bool, error) {
 	u := models.User{}
 
-	err := db.Preload("Posts").First(&u, id).Error
+	err := db.Preload("Posts").Preload("Comments").First(&u, id).Error
 
 	if err != nil && err != gorm.ErrRecordNotFound {
 		return u, false, err
