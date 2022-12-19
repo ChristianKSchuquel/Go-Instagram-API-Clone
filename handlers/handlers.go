@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -93,17 +94,17 @@ func (a *APIEnv) CreateUser(c *gin.Context) {
 // ==================================================================
 
 func (a *APIEnv) Login(c *gin.Context) {
-	var loginDto models.LoginDTO
+	var UserDTO models.UserDTO
 	var user models.User
 
-	errBind := c.BindJSON(&loginDto)
+	errBind := c.BindJSON(&UserDTO)
 	if errBind != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errBind})
 		c.Abort()
 		return
 	}
 
-	err := a.DB.Where("email = ?", loginDto.Email).First(&user).Error
+	err := a.DB.Where("email = ?", UserDTO.Email).First(&user).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while getting the user info"})
 		c.Abort()
@@ -116,7 +117,7 @@ func (a *APIEnv) Login(c *gin.Context) {
 		return
 	}
 
-	pwdCheck := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(loginDto.Password))
+	pwdCheck := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(UserDTO.Password))
 	if pwdCheck != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
 		c.Abort()
@@ -214,9 +215,9 @@ func (a *APIEnv) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	var loginDto models.LoginDTO
+	var UserDTO models.UserDTO
 
-	errBind := c.BindJSON(&loginDto)
+	errBind := c.BindJSON(&UserDTO)
 	if errBind != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": errBind})
 		c.Abort()
@@ -225,38 +226,38 @@ func (a *APIEnv) UpdateUser(c *gin.Context) {
 
 	re := regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
 
-	if re.MatchString(loginDto.Email) != true {
+	if re.MatchString(UserDTO.Email) != true {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
 		c.Abort()
 		return
 	}
 
-	if isPwdValid := utils.ValidatePwd(loginDto.Password); isPwdValid != true {
+	if isPwdValid := utils.ValidatePwd(UserDTO.Password); isPwdValid != true {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
 		c.Abort()
 		return
 	}
 
-	newPwd, err := bcrypt.GenerateFromPassword([]byte(loginDto.Password), bcrypt.DefaultCost)
+	newPwd, err := bcrypt.GenerateFromPassword([]byte(UserDTO.Password), bcrypt.DefaultCost)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, "An error occurred while hashing the password")
 		c.Abort()
 		return
 	}
 
-	if len(loginDto.Name) < 2 || len(loginDto.Name) > 35 {
+	if len(UserDTO.Name) < 2 || len(UserDTO.Name) > 35 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials name"})
 		c.Abort()
 		return
 	}
 
-	loginDto.Password = string(newPwd[:])
+	UserDTO.Password = string(newPwd[:])
 
-	user.Name = loginDto.Name
-	user.Email = loginDto.Email
-	user.Password = loginDto.Password
-	user.Gender = loginDto.Gender
-	user.Gender = strings.ToLower(loginDto.Gender)
+	user.Name = UserDTO.Name
+	user.Email = UserDTO.Email
+	user.Password = UserDTO.Password
+	user.Gender = UserDTO.Gender
+	user.Gender = strings.ToLower(UserDTO.Gender)
 
 	a.DB.Save(&user)
 
@@ -509,4 +510,69 @@ func (a *APIEnv) CreateComment(c *gin.Context) {
 
     a.DB.Save(&user)
 	c.JSON(http.StatusOK, gin.H{"Comment created successfully": newComment})
+}
+
+// ==================================================================
+// PATCH: /post/:commentid
+// ==================================================================
+
+
+func (a *APIEnv) UpdateComment(c *gin.Context) {
+	commentId := c.Params.ByName("commentid")
+	postId := c.Params.ByName("postid")
+    comment := models.Comment{}
+
+    err := a.DB.First(&comment, commentId).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
+		c.Abort()
+		return
+	}
+	if err == gorm.ErrRecordNotFound {
+		c.JSON(http.StatusNotFound, gin.H{"Error": "Comment not found"})
+		c.Abort()
+		return
+	}
+
+	token := c.GetHeader("Authorization")
+
+	user, err := utils.CheckJWTUserID(token, a.DB)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"Error": err})
+		c.Abort()
+		return
+	}
+
+    if comment.UserID != user.ID {
+		c.JSON(http.StatusUnauthorized, gin.H{"Unauthorized": "You're not the owner of this post"})
+		c.Abort()
+		return
+    }
+
+    postIdUint, err := strconv.ParseUint(postId, 0, 64)
+    if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
+		c.Abort()
+		return
+    }
+
+    if comment.PostID != uint(postIdUint) {
+		c.JSON(http.StatusUnauthorized, gin.H{"Unauthorized": "PostID of the comment doesn't match the postID provided by the user'"})
+		c.Abort()
+		return
+    }
+
+	var newComment models.Comment
+
+	errBind := c.BindJSON(&newComment)
+	if errBind != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": errBind})
+		c.Abort()
+		return
+	}
+    
+    comment.Content = newComment.Content
+
+    a.DB.Save(&comment)
+    c.JSON(http.StatusOK, gin.H{"Comment updated Successfully": comment})
 }

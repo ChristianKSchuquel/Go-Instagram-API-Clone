@@ -32,6 +32,7 @@ func Setup() *gin.Engine {
 			authorized.PATCH("post/:postid", api.UpdatePost)
 			authorized.DELETE("post/:postid", api.DeletePost)
             authorized.POST("/post/:postid", api.CreateComment)
+            authorized.PATCH("post/:postid/:commentid", api.UpdateComment)
 		}
 	}
 
