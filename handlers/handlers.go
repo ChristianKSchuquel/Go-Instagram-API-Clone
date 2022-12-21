@@ -38,7 +38,7 @@ func (a *APIEnv) CreateUser(c *gin.Context) {
 	// email validation
 
 	if err := a.DB.Where("email = ?", newUser.Email).First(&newUser).Error; err != gorm.ErrRecordNotFound {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Email alreay in use"})
 		c.Abort()
 		return
 	}
@@ -46,7 +46,7 @@ func (a *APIEnv) CreateUser(c *gin.Context) {
 	re := regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
 
 	if re.MatchString(newUser.Email) != true {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Email"})
 		c.Abort()
 		return
 	}
@@ -54,7 +54,7 @@ func (a *APIEnv) CreateUser(c *gin.Context) {
 	// password validation
 
 	if isPwdValid := utils.ValidatePwd(newUser.Password); isPwdValid != true {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Password, must be at least 7 characters long and must contain at least 1 lowercase letter, 1 upercase letter, 1 number and 1 special character"})
 		c.Abort()
 		return
 	}
@@ -71,14 +71,14 @@ func (a *APIEnv) CreateUser(c *gin.Context) {
 	// name validation
 
 	if len(newUser.Name) < 2 || len(newUser.Name) > 35 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Name, must be at least 2 characters and at max 35 characters"})
 		c.Abort()
 		return
 	}
 
 	newUser.Gender = strings.ToLower(newUser.Gender)
 
-	newUser.ID, err = utils.GenUserID(a.DB)
+	newUser.ID, err = utils.GenID(a.DB, models.User{})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while creating the user id"})
 		c.Abort()
@@ -303,7 +303,7 @@ func (a *APIEnv) CreatePost(c *gin.Context) {
 		return
 	}
 
-	newPost.ID, err = utils.GenPostID(a.DB)
+	newPost.ID, err = utils.GenID(a.DB, models.Post{})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while creating the user id"})
 		c.Abort()
@@ -496,7 +496,7 @@ func (a *APIEnv) CreateComment(c *gin.Context) {
 
     newComment.UserID = user.ID
 
-	newComment.ID, err = utils.GenPostID(a.DB)
+	newComment.ID, err = utils.GenID(a.DB, models.Comment{})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while creating the comment id"})
 		c.Abort()

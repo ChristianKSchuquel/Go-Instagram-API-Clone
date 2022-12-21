@@ -42,21 +42,11 @@ func ValidatePwd(s string) bool {
 	return hasMinLen && hasUpper && hasLower && hasNumber && hasSpecial
 }
 
-func GenUserID(db *gorm.DB) (id uint, err error) {
-	var user models.User
-	randomId := rand.Uint32()
-	if err := db.First(&user, randomId).Error; err != gorm.ErrRecordNotFound {
-		return GenUserID(db)
-	}
-
-	return uint(randomId), nil
-}
-
-func GenPostID(db *gorm.DB) (id uint, err error) {
-	var user models.User
+func GenID [Model models.Comment | models.Post | models.User](db *gorm.DB, model Model) (id uint, err error) {
+	var object Model
 	randomId := rand.Uint64()
-	if err := db.First(&user, randomId).Error; err != gorm.ErrRecordNotFound {
-		return GenPostID(db)
+	if err := db.First(&object, randomId).Error; err != gorm.ErrRecordNotFound {
+		return GenID(db, object)
 	}
 
 	return uint(randomId), nil
