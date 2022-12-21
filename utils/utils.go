@@ -42,14 +42,14 @@ func ValidatePwd(s string) bool {
 	return hasMinLen && hasUpper && hasLower && hasNumber && hasSpecial
 }
 
-func GenID [Model models.Comment | models.Post | models.User](db *gorm.DB, model Model) (id uint, err error) {
+func GenID [Model models.Comment | models.Post | models.User](db *gorm.DB, model Model) (id uint) {
 	var object Model
 	randomId := rand.Uint64()
 	if err := db.First(&object, randomId).Error; err != gorm.ErrRecordNotFound {
 		return GenID(db, object)
 	}
 
-	return uint(randomId), nil
+	return uint(randomId)
 }
 
 type JWTClaim struct {

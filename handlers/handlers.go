@@ -78,12 +78,7 @@ func (a *APIEnv) CreateUser(c *gin.Context) {
 
 	newUser.Gender = strings.ToLower(newUser.Gender)
 
-	newUser.ID, err = utils.GenID(a.DB, models.User{})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while creating the user id"})
-		c.Abort()
-		return
-	}
+	newUser.ID = utils.GenID(a.DB, models.User{})
 
 	a.DB.Create(&newUser)
 	c.JSON(http.StatusCreated, gin.H{"Created User Successfully": newUser})
@@ -303,12 +298,7 @@ func (a *APIEnv) CreatePost(c *gin.Context) {
 		return
 	}
 
-	newPost.ID, err = utils.GenID(a.DB, models.Post{})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while creating the user id"})
-		c.Abort()
-		return
-	}
+	newPost.ID = utils.GenID(a.DB, models.Post{})
 
 	post := []models.Post{newPost}
 	user.Posts = append(post)
@@ -496,12 +486,7 @@ func (a *APIEnv) CreateComment(c *gin.Context) {
 
     newComment.UserID = user.ID
 
-	newComment.ID, err = utils.GenID(a.DB, models.Comment{})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while creating the comment id"})
-		c.Abort()
-		return
-	}
+	newComment.ID = utils.GenID(a.DB, models.Comment{})
 
     newComment.PostID = post.ID
 
