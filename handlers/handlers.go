@@ -498,7 +498,7 @@ func (a *APIEnv) CreateComment(c *gin.Context) {
 }
 
 // ==================================================================
-// PATCH: /post/:commentid
+// PATCH: /post/:postid/:commentid
 // ==================================================================
 
 
@@ -560,4 +560,57 @@ func (a *APIEnv) UpdateComment(c *gin.Context) {
 
     a.DB.Save(&comment)
     c.JSON(http.StatusOK, gin.H{"Comment updated Successfully": comment})
+}
+
+// ==================================================================
+// DELETE: /post/:postid/:commentid
+// ==================================================================
+
+func(a *APIEnv) DeleteComment(c *gin.Context) {
+	commentId := c.Params.ByName("commentid")
+	postId := c.Params.ByName("postid")
+    comment := models.Comment{}
+
+    err := a.DB.First(&comment, commentId).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
+		c.Abort()
+		return
+	}
+	if err == gorm.ErrRecordNotFound {
+		c.JSON(http.StatusNotFound, gin.H{"Error": "Comment not found"})
+		c.Abort()
+		return
+	}
+
+	token := c.GetHeader("Authorization")
+
+	user, err := utils.CheckJWTUserID(token, a.DB)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"Error": err})
+		c.Abort()
+		return
+	}
+
+    if comment.UserID != user.ID {
+		c.JSON(http.StatusUnauthorized, gin.H{"Unauthorized": "You're not the owner of this comment"})
+		c.Abort()
+		return
+    }
+
+    postIdUint, err := strconv.ParseUint(postId, 0, 64)
+    if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
+		c.Abort()
+		return
+    }
+
+    if comment.PostID != uint(postIdUint) {
+		c.JSON(http.StatusUnauthorized, gin.H{"Unauthorized": "PostID of the comment doesn't match the postID provided by the user'"})
+		c.Abort()
+		return
+    }
+
+    a.DB.Delete(&comment)
+    c.JSON(http.StatusOK, gin.H{"Success": "Post Deleted Successfully"})
 }
