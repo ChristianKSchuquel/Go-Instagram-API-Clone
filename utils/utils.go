@@ -2,18 +2,18 @@ package utils
 
 import (
 	"api2/database"
+    "encoding/base64"
 	"api2/models"
 	"errors"
 	"log"
+    "fmt"
 	"math/rand"
-	"strconv"
 	"time"
 	"unicode"
 
 	"github.com/golang-jwt/jwt"
 	"gorm.io/gorm"
 )
-
 
 func ValidatePwd(s string) bool {
 	var (
@@ -57,86 +57,89 @@ type JWTClaim struct {
 
 var jwt_secret = database.GetEnvVar("JWT_SECRET")
 
-// generate a JWT token with the user id to be used in login and auth
+func GenToken(duration int, payload interface{}, privateKey string) (string, error) {
+    decodedPrivateKey, err := base64.StdEncoding.DecodeString(privateKey)
+    if err != nil {
+        return "", fmt.Errorf("could not decode: %w", err)
+    }
 
-func GenToken(userId uint) (string, error) {
-	expTime := time.Now().Add(1 * time.Hour)
-	claims := &JWTClaim{
-		Id: userId,
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: expTime.Unix(),
-		},
-	}
+    key, err := jwt.ParseRSAPrivateKeyFromPEM(decodedPrivateKey)
 
-	t := jwt.NewWithClaims(jwt.SigningMethodHS384, claims)
-	token, err := t.SignedString([]byte(jwt_secret))
 	if err != nil {
-		log.Println("error in t.signedstring:", err)
-		return "Error:", err
+        return "", fmt.Errorf("validate: parse key: %w", err)
 	}
+
+    nanosecondsToMinutes := 60000000000
+
+    var tokenDuration time.Duration = time.Duration(duration) * time.Duration(nanosecondsToMinutes)
+    log.Println(tokenDuration)
+
+    now := time.Now().UTC()
+
+    claims := make(jwt.MapClaims)
+    claims["sub"] = payload
+    claims["exp"] = now.Add(tokenDuration).Unix()
+    claims["iat"] = now.Unix()
+    claims["nbf"] = now.Unix()
+
+    token, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(key)
+    if err != nil {
+        return "", fmt.Errorf("Error: could not generate token: %w", err)
+    }
+
 	return token, nil
 }
 
-// validates a JWT token, to be used in checking if the users is logged in secured routes
-
-func ValidateToken(signedToken string) (err error) {
-	token, err := jwt.ParseWithClaims(
-		signedToken,
-		&JWTClaim{},
-		func(token *jwt.Token) (interface{}, error) {
-			return []byte(jwt_secret), nil
-		},
-	)
+func ValidateToken(token string, publicKey string) (interface{}, error) {
+	decodedPublicKey, err := base64.StdEncoding.DecodeString(publicKey)
 	if err != nil {
-		return
+		return nil, fmt.Errorf("could not decode: %w", err)
 	}
-	claims, ok := token.Claims.(*JWTClaim)
-	if !ok {
-		err = errors.New("couldnt parse claims")
-		return
-	}
-	if claims.ExpiresAt < time.Now().Local().Unix() {
-		err = errors.New("token expired")
-		return
-	}
-	return
-}
 
-//for some reason, in order for the code below to work, the "PREFIX" field in the bearer auth tab NEEDS to have spaces, this may be some insomnia bug but i have no ideia
-
-func GetTokenContent(signedToken string) (id uint, err error) {
-	token, err := jwt.ParseWithClaims(
-		signedToken,
-		&JWTClaim{},
-		func(token *jwt.Token) (interface{}, error) {
-			return []byte(jwt_secret), nil
-		},
-	)
+	key, err := jwt.ParseRSAPublicKeyFromPEM(decodedPublicKey)
 	if err != nil {
-		return
+		return "", fmt.Errorf("validate: parse key: %w", err)
+	}
+    log.Println("1")
+
+	parsedToken, err := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
+			return nil, fmt.Errorf("unexpected method: %s", t.Header["alg"])
+		}
+		return key, nil
+	})
+    log.Println("2")
+
+	if err != nil {
+		return nil, fmt.Errorf("validate: %w", err)
+	}
+    log.Println("3")
+
+	claims, ok := parsedToken.Claims.(jwt.MapClaims)
+	if !ok || !parsedToken.Valid {
+		return nil, fmt.Errorf("validate: invalid token")
 	}
 
-	claims := token.Claims.(*JWTClaim)
-	return claims.Id, nil
+	return claims["sub"], nil
 }
 
 // gets the id from the jwt token and checks if it is valid
 
-func CheckJWTUserID(token string, db *gorm.DB) (user models.User, err error) {
-
-	id, err := GetTokenContent(token)
+func GetUserByJWT(token string, db *gorm.DB, publicKey string) (user models.User, err error) {
+    log.Println(token)
+	sub, err := ValidateToken(token, publicKey)
 	if err != nil {
-		return models.User{}, err
+		return models.User{}, errors.New("Could not validate token")
 	}
 
-	idStr := strconv.FormatUint(uint64(id), 10)
-
-	user, exists, err := database.GetUser(idStr, db)
+    log.Println("2")
+	user, exists, err := database.GetUser(fmt.Sprint(sub), db)
 	if err != nil {
 		log.Println(err)
 		return user, err
 	}
 
+    log.Println("3")
 	if !exists {
 		return user, errors.New("User not found")
 	}

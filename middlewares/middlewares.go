@@ -1,26 +1,53 @@
 package middlewares
 
 import (
+	"api2/database"
 	"api2/utils"
 	"net/http"
-
+    "fmt"
+    "strings"
+    
+	"gorm.io/gorm"
 	"github.com/gin-gonic/gin"
 )
 
-func Auth() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		token := c.GetHeader("Authorization")
-		if token == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Request does not contain an acess token"})
-			c.Abort()
-			return
-		}
-		err := utils.ValidateToken(token)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-			c.Abort()
-			return
-		}
-		c.Next()
-	}
-}
+func Auth(db *gorm.DB) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        var access_token string
+        cookie, err := c.Cookie("access_token")
+
+        authorizationHeader := c.Request.Header.Get("Authorization")
+        fields := strings.Fields(authorizationHeader)
+
+        if len(fields) != 0 && fields[0] == "Bearer" {
+            access_token = fields[1]
+        } else if err == nil {
+            access_token = cookie
+        }
+
+        if access_token == "" {
+            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "fail", "message": "You are not logged in"})
+            return
+        }
+
+        accessTokenPublicKey :=  database.GetEnvVar("ACCESS_TOKEN_PUBLIC_KEY")
+
+        sub, err := utils.ValidateToken(access_token, accessTokenPublicKey)
+        if err != nil {
+            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "fail", "message": err.Error()})
+            return
+        }
+
+        user, found, err := database.GetUser(fmt.Sprint(sub), db)
+        if err != nil {
+            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "fail", "message": "The user belonging to this token no logger exists"})
+            return
+        }
+
+        if found != true {
+            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"status": "fail", "message": "User not found"})
+        }
+
+        c.Set("currentUser", user)
+        c.Next()}
+    }

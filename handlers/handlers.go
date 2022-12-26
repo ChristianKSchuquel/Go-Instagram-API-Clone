@@ -5,6 +5,7 @@ import (
 	"api2/models"
 	"api2/utils"
 	"log"
+    "fmt"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -19,6 +20,14 @@ type APIEnv struct {
 	DB *gorm.DB
 }
 
+
+    var accessTokenPrivateKey = database.GetEnvVar("ACCESS_TOKEN_PRIVATE_KEY")
+    var accessTokenPublicKey = database.GetEnvVar("ACCESS_TOKEN_PUBLIC_KEY")
+    var refreshTokenPrivateKey = database.GetEnvVar("REFRESH_TOKEN_PRIVATE_KEY")
+    var refreshTokenPublicKey = database.GetEnvVar("REFRESH_TOKEN_PUBLIC_KEY")
+    var refreshTokenMaxAge = database.GetEnvVar("REFRESH_TOKEN_MAXAGE")
+    var accessTokenMaxAge = database.GetEnvVar("ACCESS_TOKEN_MAXAGE")
+
 // ==================================================================
 // POST: /signup
 // ==================================================================
@@ -28,8 +37,8 @@ func (a *APIEnv) CreateUser(c *gin.Context) {
 
 	err := c.BindJSON(&newUser)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err})
+		
 		return
 	}
 
@@ -38,31 +47,31 @@ func (a *APIEnv) CreateUser(c *gin.Context) {
 	// email validation
 
 	if err := a.DB.Where("email = ?", newUser.Email).First(&newUser).Error; err != gorm.ErrRecordNotFound {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Email alreay in use"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Email alreay in use"})
+		
 		return
 	}
 
 	re := regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
 
 	if re.MatchString(newUser.Email) != true {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Email"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid Email"})
+		
 		return
 	}
 
 	// password validation
 
 	if isPwdValid := utils.ValidatePwd(newUser.Password); isPwdValid != true {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Password, must be at least 7 characters long and must contain at least 1 lowercase letter, 1 upercase letter, 1 number and 1 special character"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid Password, must be at least 7 characters long and must contain at least 1 lowercase letter, 1 upercase letter, 1 number and 1 special character"})
+		
 		return
 	}
 
 	newPwd, err := bcrypt.GenerateFromPassword([]byte(newUser.Password), bcrypt.DefaultCost)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, "An error occurred while hashing the password")
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, "An error occurred while hashing the password")
+		
 		return
 	}
 
@@ -71,8 +80,8 @@ func (a *APIEnv) CreateUser(c *gin.Context) {
 	// name validation
 
 	if len(newUser.Name) < 2 || len(newUser.Name) > 35 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Name, must be at least 2 characters and at max 35 characters"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid Name, must be at least 2 characters and at max 35 characters"})
+		
 		return
 	}
 
@@ -81,7 +90,7 @@ func (a *APIEnv) CreateUser(c *gin.Context) {
 	newUser.ID = utils.GenID(a.DB, models.User{})
 
 	a.DB.Create(&newUser)
-	c.JSON(http.StatusCreated, gin.H{"Created User Successfully": newUser})
+	c.AbortWithStatusJSON(http.StatusCreated, gin.H{"Created User Successfully": newUser})
 }
 
 // ==================================================================
@@ -94,38 +103,103 @@ func (a *APIEnv) Login(c *gin.Context) {
 
 	errBind := c.BindJSON(&UserDTO)
 	if errBind != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": errBind})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": errBind})
+		
 		return
 	}
 
 	err := a.DB.Where("email = ?", UserDTO.Email).First(&user).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while getting the user info"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "An error occurred while getting the user info"})
+		
 		return
 	}
 
 	if err == gorm.ErrRecordNotFound {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Invalid Credentials"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "Invalid Credentials"})
+		
 		return
 	}
 
 	pwdCheck := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(UserDTO.Password))
 	if pwdCheck != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
+		
 		return
 	}
 
-	token, err := utils.GenToken(user.ID)
+    accessTokenMaxAgeInt, err := strconv.ParseInt(accessTokenMaxAge, 10, 32)
+    refreshTokenMaxAgeInt, err := strconv.ParseInt(refreshTokenMaxAge, 10, 32)
+
+	access_token, err := utils.GenToken(int(accessTokenMaxAgeInt), user.ID, accessTokenPrivateKey)
+    if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+
+	refresh_token, err := utils.GenToken(int(refreshTokenMaxAgeInt), user.ID, refreshTokenPrivateKey)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"token": token})
+    c.SetCookie("access_token", access_token, int(accessTokenMaxAgeInt)*60, "/", "localhost", false, true)
+    c.SetCookie("refresh_token", refresh_token, int(refreshTokenMaxAgeInt)*60, "/", "localhost", false, true)
+    c.SetCookie("logged_in", "true", int(accessTokenMaxAgeInt)*60, "/", "localhost", false, false)
+
+	c.AbortWithStatusJSON(http.StatusOK, gin.H{"token": access_token})
+}
+
+// ==================================================================
+// POST: /refresh
+// ==================================================================
+
+func(a *APIEnv) RefreshAccessToken(c *gin.Context) {
+
+	cookie, err := c.Cookie("refresh_token")
+	if err != nil {
+        c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Could not get refresh token"})
+		return
+	}
+
+	sub, err := utils.ValidateToken(cookie, refreshTokenPublicKey)
+	if err != nil {
+        c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Could not validate token", "message": err})
+		return
+	}
+
+    user, found, err := database.GetUser(fmt.Sprint(sub), a.DB)
+    if err != nil && err != gorm.ErrRecordNotFound {
+        c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H {"error": err})
+    }
+    if found != true {
+        c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error":"token owner does not exist"})
+    }
+
+    accessTokenMaxAgeInt, err := strconv.ParseInt(accessTokenMaxAge, 10, 32)
+
+	access_token, err := utils.GenToken(int(accessTokenMaxAgeInt), user.ID, accessTokenPrivateKey)
+    if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+
+    c.SetCookie("access_token", access_token, int(accessTokenMaxAgeInt)*60, "/", "localhost", false, true)
+    c.SetCookie("logged_in", "true", int(accessTokenMaxAgeInt)*60, "/", "localhost", false, false)
+
+	c.JSON(http.StatusOK, gin.H{"access_token": access_token})
+}
+
+// ==================================================================
+// POST: /logout
+// ==================================================================
+
+func(a *APIEnv) Logout(c *gin.Context) {
+    c.SetCookie("access_token", "", -1, "/", "localhost", false, true)
+	c.SetCookie("refresh_token", "", -1, "/", "localhost", false, true)
+	c.SetCookie("logged_in", "", -1, "/", "localhost", false, true)
+
+    c.JSON(http.StatusOK, gin.H{"success": "logged out"})
 }
 
 // ==================================================================
@@ -139,18 +213,18 @@ func (a *APIEnv) GetUserByID(c *gin.Context) {
 	user, exists, err := database.GetUser(id, a.DB)
 	if err != nil {
 		log.Println(err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		
 		return
 	}
 
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Users not found"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "Users not found"})
+		
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"User": user})
+	c.AbortWithStatusJSON(http.StatusOK, gin.H{"User": user})
 }
 
 // ==================================================================
@@ -163,18 +237,18 @@ func (a *APIEnv) GetUsers(c *gin.Context) {
 	users, exists, err := database.GetAllUsers(a.DB)
 	if err != nil {
 		log.Println(err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		
 		return
 	}
 
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Users not found"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "Users not found"})
+		
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"Users": users})
+	c.AbortWithStatusJSON(http.StatusOK, gin.H{"Users": users})
 }
 
 // ==================================================================
@@ -182,18 +256,21 @@ func (a *APIEnv) GetUsers(c *gin.Context) {
 // ==================================================================
 
 func (a *APIEnv) DeleteUser(c *gin.Context) {
-	token := c.GetHeader("Authorization")
+	token, err := c.Cookie("access_token")
+    if err != nil {
+        c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "access token not found"})
+    }
 
-	user, err := utils.CheckJWTUserID(token, a.DB)
+	user, err := utils.GetUserByJWT(token, a.DB, accessTokenPublicKey)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err})
+		
 		return
 	}
 
 	a.DB.Delete(&user)
 
-	c.JSON(http.StatusOK, gin.H{"User deleted successfully": user})
+	c.AbortWithStatusJSON(http.StatusOK, gin.H{"User deleted successfully": user})
 }
 
 // ==================================================================
@@ -201,12 +278,15 @@ func (a *APIEnv) DeleteUser(c *gin.Context) {
 // ==================================================================
 
 func (a *APIEnv) UpdateUser(c *gin.Context) {
-	token := c.GetHeader("Authorization")
+	token, err := c.Cookie("access_token")
+    if err != nil {
+        c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "access token not found"})
+    }
 
-	user, err := utils.CheckJWTUserID(token, a.DB)
+	user, err := utils.GetUserByJWT(token, a.DB, accessTokenPublicKey)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err})
+		
 		return
 	}
 
@@ -214,35 +294,35 @@ func (a *APIEnv) UpdateUser(c *gin.Context) {
 
 	errBind := c.BindJSON(&UserDTO)
 	if errBind != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": errBind})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": errBind})
+		
 		return
 	}
 
 	re := regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
 
 	if re.MatchString(UserDTO.Email) != true {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
+		
 		return
 	}
 
 	if isPwdValid := utils.ValidatePwd(UserDTO.Password); isPwdValid != true {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials"})
+		
 		return
 	}
 
 	newPwd, err := bcrypt.GenerateFromPassword([]byte(UserDTO.Password), bcrypt.DefaultCost)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, "An error occurred while hashing the password")
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, "An error occurred while hashing the password")
+		
 		return
 	}
 
 	if len(UserDTO.Name) < 2 || len(UserDTO.Name) > 35 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials name"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid Credentials name"})
+		
 		return
 	}
 
@@ -256,7 +336,7 @@ func (a *APIEnv) UpdateUser(c *gin.Context) {
 
 	a.DB.Save(&user)
 
-	c.JSON(http.StatusOK, gin.H{"User updated successfully": user})
+	c.AbortWithStatusJSON(http.StatusOK, gin.H{"User updated successfully": user})
 }
 
 // ==================================================================
@@ -264,16 +344,18 @@ func (a *APIEnv) UpdateUser(c *gin.Context) {
 // ==================================================================
 
 func (a *APIEnv) GetCurrentUser(c *gin.Context) {
-	token := c.GetHeader("Authorization")
+    token, err := c.Cookie("access_token")
+    if err != nil {
+        c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "access token not found"})
+    }
 
-	user, err := utils.CheckJWTUserID(token, a.DB)
+	user, err := utils.GetUserByJWT(token, a.DB, accessTokenPublicKey)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"User": user})
+	c.AbortWithStatusJSON(http.StatusOK, gin.H{"User": user})
 }
 
 // ==================================================================
@@ -281,20 +363,23 @@ func (a *APIEnv) GetCurrentUser(c *gin.Context) {
 // ==================================================================
 
 func (a *APIEnv) CreatePost(c *gin.Context) {
-	token := c.GetHeader("Authorization")
+	token, err := c.Cookie("access_token")
+    if err != nil {
+        c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "access token not found"})
+    }
 
-	user, err := utils.CheckJWTUserID(token, a.DB)
+	user, err := utils.GetUserByJWT(token, a.DB, accessTokenPublicKey)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err})
+		
 		return
 	}
 	var newPost models.Post
 
 	errBind := c.BindJSON(&newPost)
 	if errBind != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": errBind})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": errBind})
+		
 		return
 	}
 
@@ -305,19 +390,19 @@ func (a *APIEnv) CreatePost(c *gin.Context) {
     newPost.UserID = user.ID
 
 	if len(newPost.Title) < 2 || len(newPost.Title) > 100 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid title length: title should be at least 2 characters and at max 100"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid title length: title should be at least 2 characters and at max 100"})
+		
 		return
 	}
 
 	if len(newPost.Content) < 10 || len(newPost.Content) > 300 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid content length: content should be at least 10 characters and at max 300"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid content length: content should be at least 10 characters and at max 300"})
+		
 		return
 	}
 
 	a.DB.Save(&user)
-	c.JSON(http.StatusOK, gin.H{"Post created successfully": newPost})
+	c.AbortWithStatusJSON(http.StatusOK, gin.H{"Post created successfully": newPost})
 }
 
 // ==================================================================
@@ -330,18 +415,16 @@ func (a *APIEnv) GetPost(c *gin.Context) {
 
 	err := a.DB.Preload("Comments").First(&post, postId).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"Error": err})
 		return
 	}
 
 	if err == gorm.ErrRecordNotFound {
-		c.JSON(http.StatusNotFound, gin.H{"Error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"Error": "post not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"Post": post})
+	c.AbortWithStatusJSON(http.StatusOK, gin.H{"Post": post})
 }
 
 // ==================================================================
@@ -354,28 +437,31 @@ func (a *APIEnv) UpdatePost(c *gin.Context) {
 
 	err := a.DB.First(&post, postId).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"Error": err})
+		
 		return
 	}
 	if err == gorm.ErrRecordNotFound {
-		c.JSON(http.StatusNotFound, gin.H{"Error": "Post not found"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"Error": "Post not found"})
+		
 		return
 	}
 
-	token := c.GetHeader("Authorization")
+	token, err := c.Cookie("access_token")
+    if err != nil {
+        c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "access token not found"})
+    }
 
-	user, err := utils.CheckJWTUserID(token, a.DB)
+	user, err := utils.GetUserByJWT(token, a.DB, accessTokenPublicKey)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err})
+		
 		return
 	}
 
 	if user.ID != post.UserID {
-		c.JSON(http.StatusUnauthorized, gin.H{"Unauthorized": "You're not the owner of this post"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"Unauthorized": "You're not the owner of this post"})
+		
 		return
 	}
 
@@ -383,20 +469,20 @@ func (a *APIEnv) UpdatePost(c *gin.Context) {
 
 	errBind := c.BindJSON(&newPost)
 	if errBind != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": errBind})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": errBind})
+		
 		return
 	}
 
 	if len(newPost.Title) < 2 || len(newPost.Title) > 100 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid title length: title should be at least 2 characters and at max 100"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid title length: title should be at least 2 characters and at max 100"})
+		
 		return
 	}
 
 	if len(newPost.Content) < 10 || len(newPost.Content) > 300 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid content length: content should be at least 10 characters and at max 300"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid content length: content should be at least 10 characters and at max 300"})
+		
 		return
 	}
 
@@ -404,7 +490,7 @@ func (a *APIEnv) UpdatePost(c *gin.Context) {
 	post.Content = newPost.Content
 
 	a.DB.Save(&post)
-	c.JSON(http.StatusOK, gin.H{"Post": "post updated successfully"})
+	c.AbortWithStatusJSON(http.StatusOK, gin.H{"Post": "post updated successfully"})
 }
 
 // ==================================================================
@@ -412,39 +498,43 @@ func (a *APIEnv) UpdatePost(c *gin.Context) {
 // ==================================================================
 
 func (a *APIEnv) DeletePost(c *gin.Context) {
-	token := c.GetHeader("Authorization")
+	token, err := c.Cookie("access_token")
+    if err != nil {
+        c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "access token not found"})
+    }
+
 	postID := c.Params.ByName("postid")
 	post := models.Post{}
 
-	err := a.DB.First(&post, postID).Error
+	err = a.DB.First(&post, postID).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err})
+		
 		return
 	}
 
 	if err == gorm.ErrRecordNotFound {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Post not found"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "Post not found"})
+		
 		return
 	}
 
-	user, err := utils.CheckJWTUserID(token, a.DB)
+	user, err := utils.GetUserByJWT(token, a.DB, accessTokenPublicKey)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err})
+		
 		return
 	}
 
 	if post.UserID != user.ID {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "You're not the owner of this post"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "You're not the owner of this post"})
+		
 		return
 	}
 
 	a.DB.Delete(&post)
 
-	c.JSON(http.StatusOK, gin.H{"User deleted successfully": post})
+	c.AbortWithStatusJSON(http.StatusOK, gin.H{"User deleted successfully": post})
 }
 
 // ==================================================================
@@ -457,22 +547,25 @@ func (a *APIEnv) CreateComment(c *gin.Context) {
 
 	err := a.DB.First(&post, postId).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"Error": err})
+		
 		return
 	}
 	if err == gorm.ErrRecordNotFound {
-		c.JSON(http.StatusNotFound, gin.H{"Error": "Post not found"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"Error": "Post not found"})
+		
 		return
 	}
 
-	token := c.GetHeader("Authorization")
+	token, err := c.Cookie("access_token")
+    if err != nil {
+        c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "access token not found"})
+    }
 
-	user, err := utils.CheckJWTUserID(token, a.DB)
+	user, err := utils.GetUserByJWT(token, a.DB, accessTokenPublicKey)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err})
+		
 		return
 	}
 
@@ -480,8 +573,8 @@ func (a *APIEnv) CreateComment(c *gin.Context) {
 
 	errBind := c.BindJSON(&newComment)
 	if errBind != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": errBind})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": errBind})
+		
 		return
 	}
 
@@ -495,7 +588,7 @@ func (a *APIEnv) CreateComment(c *gin.Context) {
 	user.Comments = append(comment)
 
     a.DB.Save(&user)
-	c.JSON(http.StatusOK, gin.H{"Comment created successfully": newComment})
+	c.AbortWithStatusJSON(http.StatusOK, gin.H{"Comment created successfully": newComment})
 }
 
 // ==================================================================
@@ -510,41 +603,44 @@ func (a *APIEnv) UpdateComment(c *gin.Context) {
 
     err := a.DB.First(&comment, commentId).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"Error": err})
+		
 		return
 	}
 	if err == gorm.ErrRecordNotFound {
-		c.JSON(http.StatusNotFound, gin.H{"Error": "Comment not found"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"Error": "Comment not found"})
+		
 		return
 	}
 
-	token := c.GetHeader("Authorization")
+	token, err := c.Cookie("access_token")
+    if err != nil {
+        c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "access token not found"})
+    }
 
-	user, err := utils.CheckJWTUserID(token, a.DB)
+	user, err := utils.GetUserByJWT(token, a.DB, accessTokenPublicKey)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"Error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"Error": err})
+		
 		return
 	}
 
     if comment.UserID != user.ID {
-		c.JSON(http.StatusUnauthorized, gin.H{"Unauthorized": "You're not the owner of this post"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"Unauthorized": "You're not the owner of this post"})
+		
 		return
     }
 
     postIdUint, err := strconv.ParseUint(postId, 0, 64)
     if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"Error": err})
+		
 		return
     }
 
     if comment.PostID != uint(postIdUint) {
-		c.JSON(http.StatusUnauthorized, gin.H{"Unauthorized": "PostID of the comment doesn't match the postID provided by the user'"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"Unauthorized": "PostID of the comment doesn't match the postID provided by the user'"})
+		
 		return
     }
 
@@ -552,15 +648,15 @@ func (a *APIEnv) UpdateComment(c *gin.Context) {
 
 	errBind := c.BindJSON(&newComment)
 	if errBind != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": errBind})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"Error": errBind})
+		
 		return
 	}
     
     comment.Content = newComment.Content
 
     a.DB.Save(&comment)
-    c.JSON(http.StatusOK, gin.H{"Comment updated Successfully": comment})
+    c.AbortWithStatusJSON(http.StatusOK, gin.H{"Comment updated Successfully": comment})
 }
 
 // ==================================================================
@@ -574,44 +670,45 @@ func(a *APIEnv) DeleteComment(c *gin.Context) {
 
     err := a.DB.First(&comment, commentId).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"Error": err})
+		
 		return
 	}
 	if err == gorm.ErrRecordNotFound {
-		c.JSON(http.StatusNotFound, gin.H{"Error": "Comment not found"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"Error": "Comment not found"})
+		
 		return
 	}
 
-	token := c.GetHeader("Authorization")
+	token, err := c.Cookie("access_token")
+    if err != nil {
+        c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "access token not found"})
+    }
 
-	user, err := utils.CheckJWTUserID(token, a.DB)
+	user, err := utils.GetUserByJWT(token, a.DB, accessTokenPublicKey)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"Error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"Error": err})
+		
 		return
 	}
 
     if comment.UserID != user.ID {
-		c.JSON(http.StatusUnauthorized, gin.H{"Unauthorized": "You're not the owner of this comment"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"Unauthorized": "You're not the owner of this comment"})
+		
 		return
     }
 
     postIdUint, err := strconv.ParseUint(postId, 0, 64)
     if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"Error": err})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"Error": err})
 		return
     }
 
     if comment.PostID != uint(postIdUint) {
-		c.JSON(http.StatusUnauthorized, gin.H{"Unauthorized": "PostID of the comment doesn't match the postID provided by the user'"})
-		c.Abort()
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"Unauthorized": "PostID of the comment doesn't match the postID provided by the user'"})
 		return
     }
 
     a.DB.Delete(&comment)
-    c.JSON(http.StatusOK, gin.H{"Success": "Post Deleted Successfully"})
+    c.AbortWithStatusJSON(http.StatusOK, gin.H{"Success": "Comment Deleted Successfully"})
 }
