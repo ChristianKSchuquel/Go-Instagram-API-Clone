@@ -302,6 +302,7 @@ func (a *APIEnv) CreatePost(c *gin.Context) {
 
 	post := []models.Post{newPost}
 	user.Posts = append(post)
+    newPost.UserID = user.ID
 
 	if len(newPost.Title) < 2 || len(newPost.Title) > 100 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid title length: title should be at least 2 characters and at max 100"})

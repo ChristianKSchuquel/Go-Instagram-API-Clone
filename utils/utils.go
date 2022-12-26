@@ -14,7 +14,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// validates a password, used in signup to verify the user provided password
 
 func ValidatePwd(s string) bool {
 	var (
@@ -43,10 +42,9 @@ func ValidatePwd(s string) bool {
 }
 
 func GenID [Model models.Comment | models.Post | models.User](db *gorm.DB, model Model) (id uint) {
-	var object Model
-	randomId := rand.Uint64()
-	if err := db.First(&object, randomId).Error; err != gorm.ErrRecordNotFound {
-		return GenID(db, object)
+	randomId := rand.Uint32()
+	if err := db.First(&model, randomId).Error; err != gorm.ErrRecordNotFound {
+		return GenID(db, model)
 	}
 
 	return uint(randomId)
