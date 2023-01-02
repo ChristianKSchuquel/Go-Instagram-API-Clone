@@ -2,11 +2,11 @@ package utils
 
 import (
 	"api2/database"
-    "encoding/base64"
 	"api2/models"
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"log"
-    "fmt"
 	"math/rand"
 	"time"
 	"unicode"
@@ -41,7 +41,7 @@ func ValidatePwd(s string) bool {
 	return hasMinLen && hasUpper && hasLower && hasNumber && hasSpecial
 }
 
-func GenID [Model models.Comment | models.Post | models.User](db *gorm.DB, model Model) (id uint) {
+func GenID[Model models.Comment | models.Post | models.User](db *gorm.DB, model Model) (id uint) {
 	randomId := rand.Uint32()
 	if err := db.First(&model, randomId).Error; err != gorm.ErrRecordNotFound {
 		return GenID(db, model)
@@ -58,34 +58,34 @@ type JWTClaim struct {
 var jwt_secret = database.GetEnvVar("JWT_SECRET")
 
 func GenToken(duration int, payload interface{}, privateKey string) (string, error) {
-    decodedPrivateKey, err := base64.StdEncoding.DecodeString(privateKey)
-    if err != nil {
-        return "", fmt.Errorf("could not decode: %w", err)
-    }
-
-    key, err := jwt.ParseRSAPrivateKeyFromPEM(decodedPrivateKey)
-
+	decodedPrivateKey, err := base64.StdEncoding.DecodeString(privateKey)
 	if err != nil {
-        return "", fmt.Errorf("validate: parse key: %w", err)
+		return "", fmt.Errorf("could not decode: %w", err)
 	}
 
-    nanosecondsToMinutes := 60000000000
+	key, err := jwt.ParseRSAPrivateKeyFromPEM(decodedPrivateKey)
 
-    var tokenDuration time.Duration = time.Duration(duration) * time.Duration(nanosecondsToMinutes)
-    log.Println(tokenDuration)
+	if err != nil {
+		return "", fmt.Errorf("validate: parse key: %w", err)
+	}
 
-    now := time.Now().UTC()
+	nanosecondsToMinutes := 60000000000
 
-    claims := make(jwt.MapClaims)
-    claims["sub"] = payload
-    claims["exp"] = now.Add(tokenDuration).Unix()
-    claims["iat"] = now.Unix()
-    claims["nbf"] = now.Unix()
+	var tokenDuration time.Duration = time.Duration(duration) * time.Duration(nanosecondsToMinutes)
+	log.Println(tokenDuration)
 
-    token, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(key)
-    if err != nil {
-        return "", fmt.Errorf("Error: could not generate token: %w", err)
-    }
+	now := time.Now().UTC()
+
+	claims := make(jwt.MapClaims)
+	claims["sub"] = payload
+	claims["exp"] = now.Add(tokenDuration).Unix()
+	claims["iat"] = now.Unix()
+	claims["nbf"] = now.Unix()
+
+	token, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(key)
+	if err != nil {
+		return "", fmt.Errorf("Error: could not generate token: %w", err)
+	}
 
 	return token, nil
 }
@@ -100,7 +100,6 @@ func ValidateToken(token string, publicKey string) (interface{}, error) {
 	if err != nil {
 		return "", fmt.Errorf("validate: parse key: %w", err)
 	}
-    log.Println("1")
 
 	parsedToken, err := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
@@ -108,12 +107,12 @@ func ValidateToken(token string, publicKey string) (interface{}, error) {
 		}
 		return key, nil
 	})
-    log.Println("2")
+	log.Println("2")
 
 	if err != nil {
 		return nil, fmt.Errorf("validate: %w", err)
 	}
-    log.Println("3")
+	log.Println("3")
 
 	claims, ok := parsedToken.Claims.(jwt.MapClaims)
 	if !ok || !parsedToken.Valid {
@@ -126,20 +125,20 @@ func ValidateToken(token string, publicKey string) (interface{}, error) {
 // gets the id from the jwt token and checks if it is valid
 
 func GetUserByJWT(token string, db *gorm.DB, publicKey string) (user models.User, err error) {
-    log.Println(token)
+	log.Println(token)
 	sub, err := ValidateToken(token, publicKey)
 	if err != nil {
 		return models.User{}, errors.New("Could not validate token")
 	}
 
-    log.Println("2")
+	log.Println("2")
 	user, exists, err := database.GetUser(fmt.Sprint(sub), db)
 	if err != nil {
 		log.Println(err)
 		return user, err
 	}
 
-    log.Println("3")
+	log.Println("3")
 	if !exists {
 		return user, errors.New("User not found")
 	}

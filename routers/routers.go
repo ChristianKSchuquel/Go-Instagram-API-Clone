@@ -20,10 +20,10 @@ func Setup() *gin.Engine {
 	{
 		routes.POST("/signup", api.CreateUser)
 		routes.POST("/login", api.Login)
-        routes.POST("/refresh", api.RefreshAccessToken)
+		routes.POST("/refresh", api.RefreshAccessToken)
 		authorized := routes.Group("/").Use(middlewares.Auth(api.DB))
 		{
-            authorized.POST("/logout", api.Logout)
+			authorized.POST("/logout", api.Logout)
 			authorized.GET("/user/:id", api.GetUserByID)
 			authorized.GET("/user", api.GetUsers)
 			authorized.DELETE("/account", api.DeleteUser)
@@ -33,9 +33,9 @@ func Setup() *gin.Engine {
 			authorized.GET("post/:postid", api.GetPost)
 			authorized.PATCH("post/:postid", api.UpdatePost)
 			authorized.DELETE("post/:postid", api.DeletePost)
-            authorized.POST("/post/:postid", api.CreateComment)
-            authorized.PATCH("post/:postid/:commentid", api.UpdateComment)
-            authorized.DELETE("post/:postid/:commentid", api.DeleteComment)
+			authorized.POST("/post/:postid", api.CreateComment)
+			authorized.PATCH("post/:postid/:commentid", api.UpdateComment)
+			authorized.DELETE("post/:postid/:commentid", api.DeleteComment)
 		}
 	}
 
