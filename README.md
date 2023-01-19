@@ -5,7 +5,7 @@
  
  ### Setup and Run
 
- Create a ".env" file and add a DSN and JWT_SECRET
+ Create  a ".env" file based on ".env.example"
 
  Then, run using
  
